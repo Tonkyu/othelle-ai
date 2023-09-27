@@ -1,23 +1,33 @@
-use super::{state::State, action::Action, turn::{Turn, TurnTrait, BLACK_TURN, FIRST_TURN, WHITE_TURN}, bitboard::{BitBoard, BitBoardTrait}, constants::TOP_BIT};
+use crate::agents::Agent;
+
+use super::{state::State, action::Action, turn::{Turn, TurnTrait, BLACK_TURN, FIRST_TURN, WHITE_TURN}, bitboard::{BitBoard, BitBoardTrait}, constants::{TOP_BIT, MAX_ACTION_NUM}};
 
 
 // https://qiita.com/sensuikan1973/items/459b3e11d91f3cb37e43
-pub struct Board {
+pub struct Board<'a> {
     turn:   Turn,
     index:  i32,
     state:  State,
+    player_agent:   &'a dyn Agent,
+    opponent_agent: &'a dyn Agent,
+    pub next_actions:   Vec<Action>,
+    actions_newness:    bool,
 }
 
-impl Board {
-    pub fn init() -> Board {
+impl<'a> Board<'a> {
+    pub fn init(player_agent: &'a dyn Agent, opponent_agent: &'a dyn Agent) -> Board<'a> {
         Board {
             turn:   FIRST_TURN,
             index:  1,
             state:  State::init(),
+            player_agent,
+            opponent_agent,
+            next_actions:   Vec::with_capacity(MAX_ACTION_NUM),
+            actions_newness:    false,
         }
     }
 
-    fn update_state(&mut self, action: Action) {
+    fn update_state(&mut self, action: &Action) {
         let mut reverse_board: BitBoard = 0;
         for k in 0..8 {
             let mut tmp_reverse_board: BitBoard = 0;
@@ -38,6 +48,7 @@ impl Board {
 
         self.state = new_state;
         self.index += 1;
+        self.actions_newness = false;
     }
 
     fn transfer(bit: BitBoard, k: i32) -> BitBoard {
@@ -54,8 +65,8 @@ impl Board {
         }
     }
 
-    fn is_pass(&self) -> bool{
-        let player_legal_actions_board: BitBoard = self.state.legal_actions_bitboard();
+    fn is_pass(&mut self) -> bool {
+        self.update_actions();
         let tmp_state: State = State {
             player_bit: self.state.opponent_bit,
             opponent_bit: self.state.player_bit,
@@ -63,11 +74,11 @@ impl Board {
         let opponent_legal_actions_board: BitBoard = tmp_state.legal_actions_bitboard();
 
         // 先手番のみ置く場所がない
-        player_legal_actions_board == 0 && opponent_legal_actions_board != 0
+        self.next_actions.len() == 0 && opponent_legal_actions_board != 0
     }
 
-    fn is_finished(&self) -> bool {
-        let player_legal_actions_board: BitBoard = self.state.legal_actions_bitboard();
+    fn is_finished(&mut self) -> bool {
+        self.update_actions();
         let tmp_state: State = State {
             player_bit: self.state.opponent_bit,
             opponent_bit: self.state.player_bit,
@@ -75,7 +86,7 @@ impl Board {
         let opponent_legal_actions_board: BitBoard = tmp_state.legal_actions_bitboard();
 
         // 両手番とも置く場所がない
-        player_legal_actions_board == 0 && opponent_legal_actions_board == 0
+        self.next_actions.len() == 0 && opponent_legal_actions_board == 0
     }
 
     fn swap_turn(&mut self) {
@@ -84,6 +95,9 @@ impl Board {
             player_bit: self.state.opponent_bit,
             opponent_bit: self.state.player_bit,
         };
+        let tmp = self.opponent_agent;
+        self.opponent_agent = self.player_agent;
+        self.player_agent = tmp;
     }
 
     fn result(&self) -> (i32, i32, &str) {
@@ -109,15 +123,42 @@ impl Board {
         (black_score, white_score, winner)
     }
 
-    pub fn play(&mut self, action_str: &str) {
-        let action: Action = Action::action_from_str(action_str);
-        self.update_state(action);
+    fn play_onestep(&mut self) {
+        if self.is_finished() {
+            return
+        }
+        if !self.is_pass() {
+            let action: Action = self.player_agent.next_action(&self.state);
+            self.update_state(&action);
+        }
+        self.swap_turn();
+        self.print();
+    }
+
+    fn update_actions(&mut self) {
+        if self.actions_newness {
+            return
+        }
+        self.next_actions = self.state.legal_actions();
+        self.actions_newness = true;
+    }
+
+    pub fn playout(&mut self) {
+        while !self.is_finished() {
+            self.play_onestep();
+        }
+        let result = self.result();
+        println!("Black:\t{}\nWhite:\t{}\nResult:{}", result.0, result.1, result.2);
     }
 
     pub fn print(&self) {
-        println!("index:\t{}", {self.index});
+        println!("index:\t{}", self.index);
+        println!("*ABCDEFGH*");
         let mut mask: u64 = TOP_BIT;
         for i in 0..64 {
+            if i % 8 == 0 {
+                print!("{}", i / 8 + 1);
+            }
             let black_state = if self.turn == BLACK_TURN { self.state.player_bit } else { self.state.opponent_bit };
             let white_state = if self.turn == WHITE_TURN { self.state.player_bit } else { self.state.opponent_bit };
 
@@ -131,13 +172,14 @@ impl Board {
             mask >>= 1;
 
             if i % 8 == 7 {
-                println!("");
+                print!("{}\n", i / 8 + 1);
             }
         }
 
         let black_score = if self.turn == BLACK_TURN { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
         let white_score = if self.turn == WHITE_TURN { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
 
+        println!("*ABCEDFGH*");
         println!("Black:\t{}", black_score);
         println!("White:\t{}\n", white_score);
 
