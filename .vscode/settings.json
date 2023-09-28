@@ -1,8 +1,0 @@
-{
-  "editor.tabSize": 4,
-  "prettier.tabWidth": 4,
-  "latex-workshop.bibtex-format.tab": "4 spaces",
-  "rust-analyzer.linkedProjects": [
-    "./Cargo.toml"
-  ]
-}
