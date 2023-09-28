@@ -1,17 +1,17 @@
 use crate::agents::Agent;
 
-use super::{state::State, action::Action, turn::{Turn, TurnTrait, BLACK_TURN, FIRST_TURN, WHITE_TURN}, bitboard::{BitBoard, BitBoardTrait}, constants::{TOP_BIT, MAX_ACTION_NUM}};
+use super::{state::State, action::Action, turn::{Turn, TurnTrait, FIRST_TURN}, bitboard::{BitBoard, BitBoardTrait}, constants::{TOP_BIT, MAX_ACTION_NUM, BOARD_SIZE, BoardStatus}};
 
 
 // https://qiita.com/sensuikan1973/items/459b3e11d91f3cb37e43
+
+#[derive(Copy, Clone)]
 pub struct Board<'a> {
     turn:   Turn,
     index:  i32,
-    state:  State,
+    pub state:  State,
     player_agent:   &'a dyn Agent,
     opponent_agent: &'a dyn Agent,
-    pub next_actions:   Vec<Action>,
-    actions_newness:    bool,
 }
 
 impl<'a> Board<'a> {
@@ -22,33 +22,11 @@ impl<'a> Board<'a> {
             state:  State::init(),
             player_agent,
             opponent_agent,
-            next_actions:   Vec::with_capacity(MAX_ACTION_NUM),
-            actions_newness:    false,
         }
     }
 
-    fn update_state(&mut self, action: &Action) {
-        let mut reverse_board: BitBoard = 0;
-        for k in 0..8 {
-            let mut tmp_reverse_board: BitBoard = 0;
-            let mut mask: BitBoard = Board::transfer(action.bitboard, k);
-            while mask != 0 && (mask & self.state.opponent_bit) != 0 {
-                tmp_reverse_board |= mask;
-                mask = Board::transfer(mask, k);
-            }
-            if mask & self.state.player_bit != 0 {
-                reverse_board |= tmp_reverse_board;
-            }
-        }
-
-        let new_state: State = State {
-            player_bit: self.state.player_bit ^ (action.bitboard | reverse_board),
-            opponent_bit: self.state.opponent_bit ^ reverse_board,
-        };
-
-        self.state = new_state;
-        self.index += 1;
-        self.actions_newness = false;
+    pub fn set_state(&mut self, state: State) {
+        self.state = state;
     }
 
     fn transfer(bit: BitBoard, k: i32) -> BitBoard {
@@ -65,46 +43,32 @@ impl<'a> Board<'a> {
         }
     }
 
-    fn is_pass(&mut self) -> bool {
-        self.update_actions();
-        let tmp_state: State = State {
-            player_bit: self.state.opponent_bit,
-            opponent_bit: self.state.player_bit,
+    pub fn status(&self) -> BoardStatus {
+        let tmp_board: Board = Board {
+            state: State {
+                player_bit: self.state.opponent_bit,
+                opponent_bit: self.state.player_bit,
+            },
+            ..*self
         };
-        let opponent_legal_actions_board: BitBoard = tmp_state.legal_actions_bitboard();
 
-        // 先手番のみ置く場所がない
-        self.next_actions.len() == 0 && opponent_legal_actions_board != 0
-    }
+        let player_legal_actions_board: BitBoard = self.legal_actions_bitboard();
+        let opponent_legal_actions_board: BitBoard = tmp_board.legal_actions_bitboard();
 
-    fn is_finished(&mut self) -> bool {
-        self.update_actions();
-        let tmp_state: State = State {
-            player_bit: self.state.opponent_bit,
-            opponent_bit: self.state.player_bit,
-        };
-        let opponent_legal_actions_board: BitBoard = tmp_state.legal_actions_bitboard();
-
-        // 両手番とも置く場所がない
-        self.next_actions.len() == 0 && opponent_legal_actions_board == 0
-    }
-
-    fn swap_turn(&mut self) {
-        self.turn.swap();
-        self.state = State {
-            player_bit: self.state.opponent_bit,
-            opponent_bit: self.state.player_bit,
-        };
-        let tmp = self.opponent_agent;
-        self.opponent_agent = self.player_agent;
-        self.player_agent = tmp;
+        if player_legal_actions_board == 0 && opponent_legal_actions_board != 0 {  // 先手番のみ置く場所がない
+            BoardStatus::Pass
+        } else if player_legal_actions_board == 0 && opponent_legal_actions_board == 0 { // 両手番とも置く場所がない
+            BoardStatus::Finished
+        } else {
+            BoardStatus::Usual
+        }
     }
 
     fn result(&self) -> (i32, i32, &str) {
         let black_score: i32;
         let white_score: i32;
 
-        if self.turn == BLACK_TURN {
+        if self.turn == Turn::Black {
             black_score = self.state.player_bit.count();
             white_score = self.state.opponent_bit.count();
         } else {
@@ -123,32 +87,63 @@ impl<'a> Board<'a> {
         (black_score, white_score, winner)
     }
 
-    fn play_onestep(&mut self) {
-        if self.is_finished() {
-            return
+    pub fn play_onestep(self, action: Action) -> Board<'a> {
+        let mut reverse_board: BitBoard = 0;
+        for k in 0..8 {
+            let mut tmp_reverse_board: BitBoard = 0;
+            let mut mask: BitBoard = Board::transfer(action.bitboard, k);
+            while mask != 0 && (mask & self.state.opponent_bit) != 0 {
+                tmp_reverse_board |= mask;
+                mask = Board::transfer(mask, k);
+            }
+            if mask & self.state.player_bit != 0 {
+                reverse_board |= tmp_reverse_board;
+            }
         }
-        if !self.is_pass() {
-            let action: Action = self.player_agent.next_action(&self.state);
-            self.update_state(&action);
-        }
-        self.swap_turn();
-        self.print();
+
+        let res_board = Board {
+            state:  State {
+                player_bit:     self.state.opponent_bit ^ reverse_board,
+                opponent_bit:   self.state.player_bit ^ (action.bitboard | reverse_board),
+            },
+            index:  self.index + 1,
+            turn:   self.turn.reverse(),
+            player_agent:   self.opponent_agent,
+            opponent_agent: self.player_agent,
+        };
+        res_board
     }
 
-    fn update_actions(&mut self) {
-        if self.actions_newness {
-            return
+    pub fn play_pass(self) -> Board<'a> {
+        Board {
+            state:  State {
+                player_bit:     self.state.opponent_bit,
+                opponent_bit:   self.state.player_bit,
+            },
+            index:  self.index + 1,
+            turn:   self.turn.reverse(),
+            player_agent:   self.opponent_agent,
+            opponent_agent: self.player_agent,
         }
-        self.next_actions = self.state.legal_actions();
-        self.actions_newness = true;
     }
 
-    pub fn playout(&mut self) {
-        while !self.is_finished() {
-            self.play_onestep();
+    pub fn playout(self) {
+        let mut tmp: Board = self;
+        let mut tmp_status: BoardStatus = self.status();
+        while tmp_status != BoardStatus::Finished {
+            tmp.print();
+            if tmp_status == BoardStatus::Pass {
+                tmp = tmp.play_pass();
+            } else {
+                let action: Action = tmp.player_agent.next_action(&tmp);
+                tmp = tmp.play_onestep(action);
+            }
+            tmp_status = tmp.status();
         }
-        let result = self.result();
-        println!("Black:\t{}\nWhite:\t{}\nResult:{}", result.0, result.1, result.2);
+        let result = tmp.result();
+
+        tmp.print();
+        println!("Result:{}", result.2);
     }
 
     pub fn print(&self) {
@@ -159,8 +154,8 @@ impl<'a> Board<'a> {
             if i % 8 == 0 {
                 print!("{}", i / 8 + 1);
             }
-            let black_state = if self.turn == BLACK_TURN { self.state.player_bit } else { self.state.opponent_bit };
-            let white_state = if self.turn == WHITE_TURN { self.state.player_bit } else { self.state.opponent_bit };
+            let black_state = if self.turn == Turn::Black { self.state.player_bit } else { self.state.opponent_bit };
+            let white_state = if self.turn == Turn::White { self.state.player_bit } else { self.state.opponent_bit };
 
             if mask & black_state != 0 {
                 print!("o");
@@ -176,12 +171,80 @@ impl<'a> Board<'a> {
             }
         }
 
-        let black_score = if self.turn == BLACK_TURN { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
-        let white_score = if self.turn == WHITE_TURN { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
+        let black_score = if self.turn == Turn::Black { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
+        let white_score = if self.turn == Turn::White { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
 
         println!("*ABCEDFGH*");
         println!("Black:\t{}", black_score);
         println!("White:\t{}\n", white_score);
 
+    }
+}
+
+// legal_actions_bitboardのみで使う.高速化のために外に出しておく(効果未検証)
+struct Direction {
+    watch_board: BitBoard,
+    shift_step: i32,
+}
+
+impl<'a> Board<'a> {
+    pub fn legal_actions(&self) -> Vec<Action> {
+        let legal_bitboard: BitBoard = self.legal_actions_bitboard();
+        let mut mask:BitBoard = TOP_BIT;
+        let mut actions: Vec<Action> = Vec::with_capacity(MAX_ACTION_NUM);
+        for _ in 0..BOARD_SIZE {
+            if legal_bitboard & mask != 0 {
+                actions.push(Action::action_from_bitboard(mask));
+            }
+            mask >>= 1;
+        }
+        actions
+    }
+
+    fn legal_actions_bitboard(&self) -> BitBoard { // 着手可能なマスにフラグが立っている
+        let horizontal_watch_board: BitBoard = self.state.opponent_bit & 0x7e7e7e7e7e7e7e7e;
+        let vertical_watch_board: BitBoard = self.state.opponent_bit & 0x00FFFFFFFFFFFF00;
+        let all_side_watch_board: BitBoard = self.state.opponent_bit & 0x007e7e7e7e7e7e00;
+
+        let blank_board: BitBoard = !(self.state.player_bit | self.state.opponent_bit);
+
+        let mut legal_board: BitBoard = 0;
+        let directions: [Direction; 4];
+
+        directions = [
+            Direction {
+                watch_board: horizontal_watch_board,
+                shift_step: 1,
+            },
+            Direction {
+                watch_board: vertical_watch_board,
+                shift_step: 8,
+            },
+            Direction {
+                watch_board: all_side_watch_board,
+                shift_step: 7,
+            },
+            Direction {
+                watch_board: all_side_watch_board,
+                shift_step: 9,
+            },
+        ];
+
+        for dir in directions.iter() {
+            let mut tmp_board: BitBoard;
+
+            tmp_board = dir.watch_board & (self.state.player_bit << dir.shift_step);
+            for _ in 0..5 {
+                tmp_board |= dir.watch_board & (tmp_board << dir.shift_step);
+            }
+            legal_board |= blank_board & (tmp_board << dir.shift_step);
+
+            tmp_board = dir.watch_board & (self.state.player_bit >> dir.shift_step);
+            for _ in 0..5 {
+                tmp_board |= dir.watch_board & (tmp_board >> dir.shift_step);
+            }
+            legal_board |= blank_board & (tmp_board >> dir.shift_step);
+        }
+        legal_board
     }
 }

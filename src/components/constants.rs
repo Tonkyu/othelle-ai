@@ -6,3 +6,13 @@ pub const BOARD_SIZE: usize = 64;
 pub const FIRST_BLACK_BIT: BitBoard = 0x0000000810000000;
 pub const FIRST_WHITE_BIT: BitBoard = 0x0000001008000000;
 pub const MAX_ACTION_NUM: usize = 33; // // オセロの合法手の最大値は33らしい. https://eukaryote.hateblo.jp/entry/2023/05/17/163629
+
+pub type ScoreType = i32;
+pub const INF: ScoreType = 10000;
+
+#[derive(PartialEq)]
+pub enum BoardStatus {
+    Usual,
+    Pass,
+    Finished,
+}

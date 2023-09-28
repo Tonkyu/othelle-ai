@@ -34,7 +34,7 @@ impl Action {
         }
     }
 
-    pub fn to_str(&self) -> String {
+    pub fn to_string(&self) -> String {
         let mut mask:BitBoard = TOP_BIT;
         let mut res: String = String::new();
         for i in 0..BOARD_SIZE {

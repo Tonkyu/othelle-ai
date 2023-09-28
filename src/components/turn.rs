@@ -1,19 +1,21 @@
-pub type Turn = bool;
 
-pub const BLACK_TURN: Turn = true;
-pub const WHITE_TURN: Turn = false;
-pub const FIRST_TURN: Turn = BLACK_TURN;
-
-pub trait TurnTrait {
-    fn swap(&mut self);
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum Turn {
+    Black,
+    White
 }
 
+pub trait TurnTrait {
+    fn reverse(&self) -> Turn;
+}
+pub const FIRST_TURN: Turn = Turn::Black;
+
 impl TurnTrait for Turn {
-    fn swap(&mut self) {
-        if *self == BLACK_TURN {
-            *self = WHITE_TURN;
+    fn reverse(&self) -> Turn {
+        if *self == Turn::Black {
+            Turn::White
         } else {
-            *self = BLACK_TURN;
+            Turn::Black
         }
     }
 }
