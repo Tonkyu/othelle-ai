@@ -1,4 +1,6 @@
 use std::io;
+use std::time::Instant;
+
 macro_rules! parse_input {
     ($x:expr, $t:ident) => ($x.trim().parse::<$t>().unwrap())
 }
@@ -39,7 +41,7 @@ fn main() {
     };
 
     // ---Select-Strategy-Here-------
-    let agent = MinimaxAgent{depth: 4};
+    let agent = AlphaBetaAgent{depth: 5, rest_time: 100};
     // ---Select-Strategy-Here-------
 
     loop {
@@ -377,6 +379,8 @@ pub const MAX_ACTION_NUM: usize = 33; // // オセロの合法手の最大値は
 pub type ScoreType = i32;
 pub const INF: ScoreType = 10000;
 
+pub const TIME_LIMT:u128  = 150000; // micro sec
+
 #[derive(PartialEq)]
 pub enum BoardStatus {
     Usual,
@@ -474,20 +478,22 @@ pub trait Agent {
 
 
 
-
-pub struct MinimaxAgent {
+pub struct AlphaBetaAgent {
     pub depth: i32,
+    pub rest_time:  u128,    // micro sec
 }
 
-impl Agent for MinimaxAgent {
+impl Agent for AlphaBetaAgent {
     fn next_action_option(&self, board: &Board) -> Option<Action> {
+        let now = Instant::now();
         let mut best_action: Option<Action> = None;
-        let mut best_score: ScoreType = -INF;
+        let mut alpha: ScoreType = -INF;
+        let beta: ScoreType = INF;
         for action in board.legal_actions() {
             let next_board: Board = board.play_onestep(action);
-            let score: ScoreType = -MinimaxAgent::minimax_score(&next_board, self.depth);
-            if score > best_score {
-                best_score = score;
+            let score: ScoreType = -self.alpha_beta_score(&next_board, self.depth, -beta, -alpha, now);
+            if score > alpha {
+                alpha = score;
                 best_action = Some(action);
             }
         }
@@ -495,8 +501,12 @@ impl Agent for MinimaxAgent {
     }
 }
 
-impl MinimaxAgent {
-    fn minimax_score(board: &Board, depth: i32) -> ScoreType {
+impl AlphaBetaAgent {
+    fn alpha_beta_score(&self, board: &Board, depth: i32, mut alpha: ScoreType, beta: ScoreType, now: Instant) -> ScoreType {
+        if TIME_LIMT < now.elapsed().as_micros() + self.rest_time {
+            return CellEval::eval(*board);
+        }
+
         if board.status() == BoardStatus::Finished || depth == 0 {
             return CellEval::eval(*board);
         }
@@ -506,22 +516,25 @@ impl MinimaxAgent {
                 BoardStatus::Finished => { return CellEval::eval(*board); },
                 BoardStatus::Pass => {
                     let next_board: Board = (*board).play_pass();
-                    return -MinimaxAgent::minimax_score(&next_board, depth);
+                    return -self.alpha_beta_score(&next_board, depth, alpha, beta, now);
                 },
                 _ => {},
             }
         }
-        let mut best_score: ScoreType = -INF;
         for action in legal_actions {
             let next_board: Board = (*board).play_onestep(action);
-            let score: ScoreType = -MinimaxAgent::minimax_score(&next_board, depth-1);
-            if score > best_score {
-                best_score = score;
+            let score: ScoreType = -self.alpha_beta_score(&next_board, depth-1, -beta, -alpha, now);
+            if score > alpha {
+                alpha = score;
+            }
+            if alpha >= beta {
+                return alpha
             }
         }
-        best_score
+        alpha
     }
 }
+
 
 
 

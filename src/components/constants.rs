@@ -10,6 +10,8 @@ pub const MAX_ACTION_NUM: usize = 33; // // オセロの合法手の最大値は
 pub type ScoreType = i32;
 pub const INF: ScoreType = 10000;
 
+pub const TIME_LIMT: u128 = 150000; // micro sec
+
 #[derive(PartialEq)]
 pub enum BoardStatus {
     Usual,

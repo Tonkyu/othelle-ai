@@ -3,6 +3,7 @@ use super::components::{board::Board, action::Action, state::State};
 pub mod random;
 pub mod human;
 pub mod minimax;
+pub mod alphabeta;
 
 pub trait Agent {
     fn next_action_option(&self, board: &Board) -> Option<Action>;

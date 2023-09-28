@@ -64,7 +64,7 @@ impl<'a> Board<'a> {
         }
     }
 
-    fn result(&self) -> (i32, i32, &str) {
+    fn result(&self) -> (i32, i32, Turn) {
         let black_score: i32;
         let white_score: i32;
 
@@ -76,12 +76,12 @@ impl<'a> Board<'a> {
             black_score = self.state.opponent_bit.count();
         }
 
-        let winner: &str = if black_score > white_score {
-            "Black"
+        let winner: Turn = if black_score > white_score {
+            Turn::Black
         } else if black_score < white_score {
-            "White"
+            Turn::White
         } else {
-            "Draw"
+            Turn::Draw
         };
 
         (black_score, white_score, winner)
@@ -127,11 +127,10 @@ impl<'a> Board<'a> {
         }
     }
 
-    pub fn playout(self) {
+    pub fn playout(self, print_flag: bool) -> (i32, i32, Turn) {
         let mut tmp: Board = self;
         let mut tmp_status: BoardStatus = self.status();
         while tmp_status != BoardStatus::Finished {
-            tmp.print();
             if tmp_status == BoardStatus::Pass {
                 tmp = tmp.play_pass();
             } else {
@@ -142,8 +141,11 @@ impl<'a> Board<'a> {
         }
         let result = tmp.result();
 
-        tmp.print();
-        println!("Result:{}", result.2);
+        if print_flag {
+            tmp.print();
+            println!("Result:{}", result.2);
+        }
+        result
     }
 
     pub fn print(&self) {
