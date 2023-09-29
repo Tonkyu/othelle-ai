@@ -1,5 +1,5 @@
 pub mod constants;
-pub mod turn;
+pub mod enums;
 pub mod bitboard;
 pub mod board;
 pub mod state;

@@ -1,4 +1,4 @@
-use super::{bitboard::BitBoard, constants::{FIRST_WHITE_BIT, FIRST_BLACK_BIT, TOP_BIT, BOARD_LEN}, turn::{Turn, FIRST_TURN}};
+use super::{bitboard::BitBoard, constants::{FIRST_WHITE_BIT, FIRST_BLACK_BIT, TOP_BIT, BOARD_LEN}, enums::{Turn, FIRST_TURN}};
 use std::io;
 
 #[derive(Copy, Clone)]

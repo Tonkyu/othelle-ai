@@ -11,10 +11,3 @@ pub type ScoreType = i32;
 pub const INF: ScoreType = 10000;
 
 pub const TIME_LIMT: u128 = 150000; // micro sec
-
-#[derive(PartialEq)]
-pub enum BoardStatus {
-    Usual,
-    Pass,
-    Finished,
-}

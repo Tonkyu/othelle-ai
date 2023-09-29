@@ -33,3 +33,20 @@ impl fmt::Display for Turn {
         write!(f, "{}", value)
     }
 }
+
+
+
+#[derive(PartialEq)]
+pub enum BoardStatus {
+    Usual,
+    Pass,
+    Finished,
+}
+
+#[derive(PartialEq)]
+pub enum WinningStatus {
+    Win,
+    Lose,
+    Draw,
+    NotFinished,
+}

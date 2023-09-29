@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use super::Agent;
-use crate::{components::{action::Action, constants::{ScoreType, BoardStatus, INF, TIME_LIMT}, board::Board}, evals::{cell_score::CellEval, EvalTrait}};
+use crate::{components::{action::Action, constants::{ScoreType, INF, TIME_LIMT}, board::Board, enums::BoardStatus}, evals::{cell_score::CellEval, EvalTrait}};
 
 pub struct AlphaBetaAgent {
     pub depth: i32,

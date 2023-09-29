@@ -4,6 +4,7 @@ pub mod random;
 pub mod human;
 pub mod minimax;
 pub mod alphabeta;
+pub mod mcts;
 
 pub trait Agent {
     fn next_action_option(&self, board: &Board) -> Option<Action>;

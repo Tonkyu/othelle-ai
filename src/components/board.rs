@@ -1,6 +1,6 @@
 use crate::agents::Agent;
 
-use super::{state::State, action::Action, turn::{Turn, TurnTrait, FIRST_TURN}, bitboard::{BitBoard, BitBoardTrait}, constants::{TOP_BIT, MAX_ACTION_NUM, BOARD_SIZE, BoardStatus}};
+use super::{state::State, action::Action, enums::{Turn, TurnTrait, FIRST_TURN, BoardStatus, WinningStatus}, bitboard::{BitBoard, BitBoardTrait}, constants::{TOP_BIT, MAX_ACTION_NUM, BOARD_SIZE}};
 
 
 // https://qiita.com/sensuikan1973/items/459b3e11d91f3cb37e43
@@ -146,6 +146,22 @@ impl<'a> Board<'a> {
             println!("Result:{}", result.2);
         }
         result
+    }
+
+    pub fn winning_status(&self) -> WinningStatus {
+        if self.status() == BoardStatus::Finished {
+            let player_cnt = self.state.player_bit.count();
+            let opponent_cnt = self.state.opponent_bit.count();
+            if player_cnt > opponent_cnt {
+                WinningStatus::Win
+            } else if player_cnt < opponent_cnt {
+                WinningStatus::Lose
+            } else {
+                WinningStatus::Draw
+            }
+        } else {
+            WinningStatus::NotFinished
+        }
     }
 
     pub fn print(&self) {

@@ -1,6 +1,7 @@
 use std::io;
 use std::time::Instant;
 
+
 macro_rules! parse_input {
     ($x:expr, $t:ident) => ($x.trim().parse::<$t>().unwrap())
 }
@@ -41,7 +42,7 @@ fn main() {
     };
 
     // ---Select-Strategy-Here-------
-    let agent = AlphaBetaAgent{depth: 5, rest_time: 100};
+    let agent = MCTS{expand_threshold: 13, rest_time: 10};
     // ---Select-Strategy-Here-------
 
     loop {
@@ -112,29 +113,6 @@ impl<'a> Board<'a> {
         }
     }
 
-    fn result(&self) -> (i32, i32, &str) {
-        let black_score: i32;
-        let white_score: i32;
-
-        if self.turn == Turn::Black {
-            black_score = self.state.player_bit.count();
-            white_score = self.state.opponent_bit.count();
-        } else {
-            white_score = self.state.player_bit.count();
-            black_score = self.state.opponent_bit.count();
-        }
-
-        let winner: &str = if black_score > white_score {
-            "Black"
-        } else if black_score < white_score {
-            "White"
-        } else {
-            "Draw"
-        };
-
-        (black_score, white_score, winner)
-    }
-
     pub fn play_onestep(self, action: Action) -> Board<'a> {
         let mut reverse_board: BitBoard = 0;
         for k in 0..8 {
@@ -175,57 +153,20 @@ impl<'a> Board<'a> {
         }
     }
 
-    pub fn playout(self) {
-        let mut tmp: Board = self;
-        let mut tmp_status: BoardStatus = self.status();
-        while tmp_status != BoardStatus::Finished {
-            tmp.print();
-            if tmp_status == BoardStatus::Pass {
-                tmp = tmp.play_pass();
+    pub fn winning_status(&self) -> WinningStatus {
+        if self.status() == BoardStatus::Finished {
+            let player_cnt = self.state.player_bit.count();
+            let opponent_cnt = self.state.opponent_bit.count();
+            if player_cnt > opponent_cnt {
+                WinningStatus::Win
+            } else if player_cnt < opponent_cnt {
+                WinningStatus::Lose
             } else {
-                let action: Action = tmp.player_agent.next_action(&tmp);
-                tmp = tmp.play_onestep(action);
+                WinningStatus::Draw
             }
-            tmp_status = tmp.status();
+        } else {
+            WinningStatus::NotFinished
         }
-        let result = tmp.result();
-
-        tmp.print();
-        println!("Result:{}", result.2);
-    }
-
-    pub fn print(&self) {
-        println!("index:\t{}", self.index);
-        println!("*ABCDEFGH*");
-        let mut mask: u64 = TOP_BIT;
-        for i in 0..64 {
-            if i % 8 == 0 {
-                print!("{}", i / 8 + 1);
-            }
-            let black_state = if self.turn == Turn::Black { self.state.player_bit } else { self.state.opponent_bit };
-            let white_state = if self.turn == Turn::White { self.state.player_bit } else { self.state.opponent_bit };
-
-            if mask & black_state != 0 {
-                print!("o");
-            } else if mask & white_state != 0 {
-                print!("x");
-            } else {
-                print!(".");
-            }
-            mask >>= 1;
-
-            if i % 8 == 7 {
-                print!("{}\n", i / 8 + 1);
-            }
-        }
-
-        let black_score = if self.turn == Turn::Black { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
-        let white_score = if self.turn == Turn::White { self.state.player_bit.count() } else { self.state.opponent_bit.count() };
-
-        println!("*ABCEDFGH*");
-        println!("Black:\t{}", black_score);
-        println!("White:\t{}\n", white_score);
-
     }
 }
 
@@ -348,6 +289,17 @@ impl Action {
 }
 
 pub type BitBoard = u64;
+pub const TOP_BIT: u64 = 0x8000000000000000;
+pub const BOARD_LEN: usize = 8;
+pub const BOARD_SIZE: usize = 64;
+pub const FIRST_BLACK_BIT: BitBoard = 0x0000000810000000;
+pub const FIRST_WHITE_BIT: BitBoard = 0x0000001008000000;
+pub const MAX_ACTION_NUM: usize = 33; // // オセロの合法手の最大値は33らしい. https://eukaryote.hateblo.jp/entry/2023/05/17/163629
+
+pub type ScoreType = i32;
+pub const INF: ScoreType = 10000;
+
+pub const TIME_LIMT:u128  = 150000; // micro sec
 
 pub trait BitBoardTrait {
     fn count(&self) -> i32;
@@ -369,17 +321,6 @@ impl BitBoardTrait for BitBoard {
     }
 }
 
-pub const TOP_BIT: u64 = 0x8000000000000000;
-pub const BOARD_LEN: usize = 8;
-pub const BOARD_SIZE: usize = 64;
-pub const FIRST_BLACK_BIT: BitBoard = 0x0000000810000000;
-pub const FIRST_WHITE_BIT: BitBoard = 0x0000001008000000;
-pub const MAX_ACTION_NUM: usize = 33; // // オセロの合法手の最大値は33らしい. https://eukaryote.hateblo.jp/entry/2023/05/17/163629
-
-pub type ScoreType = i32;
-pub const INF: ScoreType = 10000;
-
-pub const TIME_LIMT:u128  = 150000; // micro sec
 
 #[derive(PartialEq)]
 pub enum BoardStatus {
@@ -388,6 +329,14 @@ pub enum BoardStatus {
     Finished,
 }
 
+
+#[derive(PartialEq)]
+pub enum WinningStatus {
+    Win,
+    Lose,
+    Draw,
+    NotFinished,
+}
 
 
 #[derive(Copy, Clone)]
@@ -477,97 +426,126 @@ pub trait Agent {
 }
 
 
+type ValueType = f64;
 
-pub struct AlphaBetaAgent {
-    pub depth: i32,
-    pub rest_time:  u128,    // micro sec
+const INF_VALUE: ValueType = 10000.0;
+
+struct Node<'a> {
+    pub board: Board<'a>,
+    pub sum_w:  ValueType,
+    pub child_nodes:    Vec<Node<'a>>,
+    pub try_count:  u32,
 }
 
-impl Agent for AlphaBetaAgent {
+impl<'a> Node<'a> {
+    pub fn init(board: Board<'a>) -> Node<'a> {
+        Node {
+            board,
+            sum_w:  0.,
+            child_nodes:    vec![],
+            try_count:  0,
+        }
+    }
+
+    pub fn expand(& mut self) {
+        let actions: Vec<Action> = self.board.legal_actions();
+        for action in actions {
+            let new_board = self.board.play_onestep(action);
+            let add_node: Node = Node::init(new_board);
+            self.child_nodes.push(add_node);
+        }
+    }
+
+    pub fn evaluate(&mut self, expand_threshold: u32) -> ValueType {
+        let winning_status = self.board.winning_status();
+        if winning_status != WinningStatus::NotFinished {
+            let value:ValueType = if winning_status == WinningStatus::Win {
+                1.
+            } else if winning_status == WinningStatus::Lose {
+                0.
+            } else {
+                0.5
+            };
+            self.sum_w += value;
+            self.try_count += 1;
+            value
+        } else if self.child_nodes.is_empty() {
+            let value = self.get_playout_score();
+            self.sum_w += value;
+            self.try_count += 1;
+            if self.try_count == expand_threshold {
+                self.expand();
+            }
+            value
+        } else {
+            let index = self.next_child_node_index();
+            let node = &mut self.child_nodes[index];
+            let value = 1. - node.evaluate(expand_threshold);
+            self.sum_w += value;
+            self.try_count += 1;
+            value
+        }
+    }
+
+    fn get_playout_score(&self) -> ValueType {
+        let winning_status = self.board.winning_status();
+        if winning_status == WinningStatus::Win {
+            1.
+        } else if winning_status == WinningStatus::Lose {
+            0.
+        } else {
+            0.5
+        }
+    }
+
+    fn next_child_node_index(&self) -> usize {
+        let mut t = 0;
+        for (i, node) in self.child_nodes.iter().enumerate() {
+            if node.try_count == 0 {
+                return i;
+            }
+            t += node.try_count;
+        }
+        let mut best_value = -INF_VALUE;
+        let mut best_index = 0;
+
+        for (i, node) in self.child_nodes.iter().enumerate() {
+            let ucb1_value: f64 = 1. - node.sum_w / node.try_count as ValueType
+                                + 1. * (2. * (t as ValueType).ln() / node.try_count as ValueType).sqrt();
+            if ucb1_value > best_value {
+                best_index = i;
+                best_value = ucb1_value;
+            }
+        }
+        best_index
+    }
+}
+
+pub struct MCTS {
+    pub expand_threshold:  u32,
+    pub rest_time: u128, // micro sec
+}
+
+impl Agent for MCTS {
     fn next_action_option(&self, board: &Board) -> Option<Action> {
         let now = Instant::now();
-        let mut best_action: Option<Action> = None;
-        let mut alpha: ScoreType = -INF;
-        let beta: ScoreType = INF;
-        for action in board.legal_actions() {
-            let next_board: Board = board.play_onestep(action);
-            let score: ScoreType = -self.alpha_beta_score(&next_board, self.depth, -beta, -alpha, now);
-            if score > alpha {
-                alpha = score;
-                best_action = Some(action);
+        let mut root_node: Node = Node::init(*board);
+        root_node.expand();
+        while now.elapsed().as_micros() + self.rest_time < TIME_LIMT {
+            root_node.evaluate(self.expand_threshold);
+        }
+        let actions = board.legal_actions();
+        let mut res_action = None;
+
+        let mut most_try_count = 0;
+        for i in 0..actions.len() {
+            let count = root_node.child_nodes[i].try_count;
+            if count > most_try_count {
+                most_try_count = count;
+                res_action = Some(actions[i]);
             }
         }
-        best_action
-    }
-}
 
-impl AlphaBetaAgent {
-    fn alpha_beta_score(&self, board: &Board, depth: i32, mut alpha: ScoreType, beta: ScoreType, now: Instant) -> ScoreType {
-        if TIME_LIMT < now.elapsed().as_micros() + self.rest_time {
-            return CellEval::eval(*board);
-        }
-
-        if board.status() == BoardStatus::Finished || depth == 0 {
-            return CellEval::eval(*board);
-        }
-        let legal_actions: Vec<Action> = board.legal_actions();
-        if legal_actions.is_empty() {
-            match board.status() {
-                BoardStatus::Finished => { return CellEval::eval(*board); },
-                BoardStatus::Pass => {
-                    let next_board: Board = (*board).play_pass();
-                    return -self.alpha_beta_score(&next_board, depth, alpha, beta, now);
-                },
-                _ => {},
-            }
-        }
-        for action in legal_actions {
-            let next_board: Board = (*board).play_onestep(action);
-            let score: ScoreType = -self.alpha_beta_score(&next_board, depth-1, -beta, -alpha, now);
-            if score > alpha {
-                alpha = score;
-            }
-            if alpha >= beta {
-                return alpha
-            }
-        }
-        alpha
-    }
-}
-
-
-
-
-pub trait EvalTrait {
-    fn eval(board: Board) -> ScoreType;
-}
-
-pub struct CellEval {}
-
-impl EvalTrait for CellEval {
-    fn eval(board: Board) -> ScoreType {
-        let mut res_score: ScoreType = 0;
-        const SCORE_TABLE: [ScoreType; BOARD_SIZE] = [
-            30, -12, 0, -1, -1, 0, -12, 30,
-            -12, -15, -3, -3, -3, -3, -15, -12,
-            0, -3, 0, -1, -1, 0, -3, 0,
-            -1, -3, -1, -1, -1, -1, -3, -1,
-            -1, -3, -1, -1, -1, -1, -3, -1,
-            0, -3, 0, -1, -1, 0, -3, 0,
-            -12, -15, -3, -3, -3, -3, -15, -12,
-            30, -12, 0, -1, -1, 0, -12, 30
-        ];
-
-        let mut mask: BitBoard = TOP_BIT;
-        for i in 0..BOARD_SIZE {
-            if board.state.player_bit & mask != 0 {
-                res_score += SCORE_TABLE[i];
-            }
-            if board.state.opponent_bit & mask != 0 {
-                res_score -= SCORE_TABLE[i];
-            }
-            mask >>= 1;
-        }
-        res_score
+        res_action
     }
 }
