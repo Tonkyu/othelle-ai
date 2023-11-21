@@ -3,24 +3,131 @@ use std::fmt;
 
 pub type NumType = f32;
 
+pub struct Vector {
+    pub rows:   usize,
+    pub data:   Vec<NumType>,
+}
+
+impl Vector {
+    pub fn new(data: Vec<NumType>) -> Self {
+        Vector {
+            rows: data.len(),
+            data: data,
+        }
+    }
+
+    pub fn zeros(rows: usize) -> Self {
+        let data = vec![NumType::default(); rows];
+        Vector {
+            rows,
+            data,
+        }
+    }
+
+    pub fn vec2mat(self) -> Matrix {
+        Matrix {
+            rows: self.rows,
+            cols: 1,
+            data: self.data
+                .chunks(1)
+                .map(|chunk| chunk.to_vec())
+                .collect(),
+        }
+    }
+}
+
+impl ops::Add for &Vector {
+    type Output = Vector;
+
+    fn add(self, other: &Vector) -> Vector {
+        assert_eq!(
+            self.rows, other.rows,
+            "Vector dimensions do not match for addition (rows)"
+        );
+
+        let mut data = Vector::zeros(self.rows).data;
+        for i in 0..self.rows {
+            data[i] = self.data[i] + other.data[i];
+        }
+
+        Vector {
+            data: self.data.iter().zip(&other.data)
+                .map(|(a, b)| a + b).collect(),
+            ..*self
+        }
+    }
+}
+
+impl ops::Sub for &Vector {
+    type Output = Vector;
+
+    fn sub(self, other: &Vector) -> Vector {
+        assert_eq!(
+            self.rows, other.rows,
+            "Vector dimensions do not match for subtraction (rows)"
+        );
+
+        let mut data = Vector::zeros(self.rows).data;
+        for i in 0..self.rows {
+            data[i] = self.data[i] + other.data[i];
+        }
+
+        Vector {
+            data: self.data.iter().zip(&other.data)
+                .map(|(a, b)| a + b).collect(),
+            ..*self
+        }
+    }
+}
+
+impl ops::Mul<&Vector> for NumType {
+    type Output = Vector;
+    fn mul(self, other: &Vector) -> Vector {
+        let data = other.data.iter()
+        .map(|&element| element * self).collect();
+
+        Vector {
+            data,
+            ..*other
+        }
+    }
+}
+
+impl ops::Mul<NumType> for &Vector
+{
+    type Output = Vector;
+    fn mul(self, other: NumType) -> Vector {
+        let data = self.data.iter()
+        .map(|&element| element * other).collect();
+
+        Vector {
+            data,
+            ..*self
+        }
+    }
+}
+
 pub struct Matrix {
     rows:  usize,
     cols:  usize,
-    data:   Vec<Vec<NumType>>
+    data:   Vec<Vec<NumType>>,
 }
 
 impl Matrix {
     pub fn new(data: Vec<Vec<NumType>>) -> Self {
+        assert_eq!(
+            data.len(), 0,
+            "Can't create new matrix whose length is 0",
+        );
         Matrix {
             rows: data.len(),
             cols: data[0].len(),
-            data: data
+            data: data,
         }
     }
 
-    pub fn zeros(rows: usize, cols: usize) -> Self
-    {
-        let data = vec![vec![0.0; cols]; rows];
+    pub fn zeros(rows: usize, cols: usize) -> Self {
+        let data = vec![vec![NumType::default(); cols]; rows];
         Matrix {
             rows,
             cols,
@@ -28,9 +135,8 @@ impl Matrix {
         }
     }
 
-    pub fn t(&self) -> Self
-    {
-        let mut data = vec![vec![0.0; self.rows]; self.cols];
+    pub fn t(&self) -> Self {
+        let mut data = vec![vec![NumType::default(); self.rows]; self.cols];
         for i in 0..self.rows {
             for j in 0..self.cols {
                 data[j][i] = self.data[i][j];
@@ -41,6 +147,14 @@ impl Matrix {
             cols: self.rows,
             data,
         }
+    }
+
+    pub fn mat2vec(self) -> Vector {
+        assert_eq!(
+            self.cols, 1,
+            "Can't convert to Vector: cols is not 1",
+        );
+        Vector::new(self.data.iter().flat_map(|row| row.iter()).cloned().collect())
     }
 }
 
@@ -158,7 +272,6 @@ where
         }
     }
 }
-
 
 impl fmt::Display for Matrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
